@@ -34,9 +34,22 @@ def create_task(task : TaskCreate, db: Session = Depends(get_db)):
     return new_task
 
 @app.get("/tasks", response_model = list[TaskResponse])
-def get_task(db : Session = Depends(get_db)):
-    tasks = db.query(Task).all()
+def get_task(completed : bool | None = None, db : Session = Depends(get_db)):
+    query = db.query(Task)
+
+    if completed is not None:
+        query = query.filter(Task.completed == completed)
+    tasks = query.all()
     return tasks
+
+@app.get("/tasks/{task_id}", response_model = TaskResponse)
+def get_task_id(task_id : int, db : Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+
+    if task is None:
+        raise HTTPException(status_code = 404, detail = "Task Not Found")
+    
+    return task
 
 @app.put("/tasks/{task_id}",response_model = TaskResponse)
 def update_task(task_id : int, updated_task : TaskCreate, db: Session = Depends(get_db)):
