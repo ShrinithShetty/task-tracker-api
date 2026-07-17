@@ -2,8 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.schemas.task import TaskCreate, TaskResponse
+from app.schemas.user import UserCreate, UserResponse
 from app.db.database import Base, engine, get_db
 from app.models.task import Task
+from app.models.user import User
 
 
 Base.metadata.create_all(bind = engine)
@@ -56,7 +58,7 @@ def update_task(task_id : int, updated_task : TaskCreate, db: Session = Depends(
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if task is None:
-        raise HTTPException(status_code = 404, detail = "Task Not Found" )
+        raise HTTPException(status_code = 400, detail = "Task Not Found" )
     
     task.title = updated_task.title
     task.description = updated_task.description
@@ -79,5 +81,32 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
 
     return None
 
+
+@app.post("/users/", response_model = UserResponse)
+def create_user(user : UserCreate, db : Session = Depends(get_db)):
+    exisiting = db.query(User).filter(User.email == user.email).first()
+
+    if exisiting is not None:
+        raise HTTPException(400, detail = "Email is Already Registered")
+    
+    new_user = User(
+        email = user.email,
+        fullname = user.fullname,
+        password = user.password
+
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+
+@app.get("/users/", response_model = list[UserResponse] )
+def get_user(db : Session = Depends(get_db)):
+    users = db.query(User).all()
+
+    return users
  
     
