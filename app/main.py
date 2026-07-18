@@ -24,16 +24,23 @@ def health():
 
 @app.post("/tasks", response_model = TaskResponse)
 def create_task(task : TaskCreate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == task.user_id).first()
+
+    if user is None:
+        raise HTTPException(404, detail= "User Not Found")
+    
     new_task = Task(
         title = task.title,
         description = task.description,
-        completed = task.completed
+        completed = task.completed,
+        user_id = task.user_id
     )
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
-
     return new_task
+
+
 
 @app.get("/tasks", response_model = list[TaskResponse])
 def get_task(completed : bool | None = None, db : Session = Depends(get_db)):
@@ -58,11 +65,16 @@ def update_task(task_id : int, updated_task : TaskCreate, db: Session = Depends(
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if task is None:
-        raise HTTPException(status_code = 400, detail = "Task Not Found" )
+        raise HTTPException(status_code = 404, detail = "Task Not Found" )
+    
+    user = db.query(User).filter(User.id == updated_task.user_id).first()
+    if user is None:
+        raise HTTPException(404, detail="User Not Found")
     
     task.title = updated_task.title
     task.description = updated_task.description
     task.completed = updated_task.completed
+    task.user_id = updated_task.user_id
 
     db.commit()
     db.refresh(task)
@@ -109,4 +121,14 @@ def get_user(db : Session = Depends(get_db)):
 
     return users
  
+@app.get('/users/{user_id}/tasks', response_model= list[TaskResponse])
+def get_user_tasks(user_id : int, db : Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        raise HTTPException(404, detail="User Not Found")
+    
+    tasks = db.query(Task).filter(Task.user_id == user_id).all()
+    return tasks
+
     
