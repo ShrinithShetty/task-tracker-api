@@ -3,9 +3,12 @@ from sqlalchemy.orm import Session
 
 from app.schemas.task import TaskCreate, TaskResponse
 from app.schemas.user import UserCreate, UserResponse
+from app.schemas.login import LoginCreate, LoginResponse
 from app.db.database import Base, engine, get_db
+from app.utils.security import hash_password, verify_password
 from app.models.task import Task
 from app.models.user import User
+
 
 
 Base.metadata.create_all(bind = engine)
@@ -27,7 +30,7 @@ def create_task(task : TaskCreate, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == task.user_id).first()
 
     if user is None:
-        raise HTTPException(404, detail= "User Not Found")
+        raise HTTPException(status_code = 404, detail= "User Not Found")
     
     new_task = Task(
         title = task.title,
@@ -99,12 +102,12 @@ def create_user(user : UserCreate, db : Session = Depends(get_db)):
     exisiting = db.query(User).filter(User.email == user.email).first()
 
     if exisiting is not None:
-        raise HTTPException(400, detail = "Email is Already Registered")
+        raise HTTPException(status_code = 400, detail = "Email is Already Registered")
     
     new_user = User(
         email = user.email,
         fullname = user.fullname,
-        password = user.password
+        password = hash_password(user.password)
 
     )
 
@@ -126,9 +129,20 @@ def get_user_tasks(user_id : int, db : Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
 
     if user is None:
-        raise HTTPException(404, detail="User Not Found")
+        raise HTTPException(status_code = 404, detail="User Not Found")
     
     tasks = db.query(Task).filter(Task.user_id == user_id).all()
     return tasks
 
+@app.post("/login", response_model= LoginResponse)
+def create_login(user_data : LoginCreate, db : Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_data.email).first()
+
+    if user is None:
+        raise HTTPException(status_code= 401, detail= "Invalid email or password")
+    
+    if not verify_password(user_data.password, user.password):
+        raise HTTPException(status_code= 401, detail="Invalid email or password")
+    
+    return {"message" : "Login Successfull"}
     
