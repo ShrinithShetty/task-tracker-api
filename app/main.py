@@ -1,14 +1,19 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import jwt, JWTError
+
 
 from app.schemas.task import TaskCreate, TaskResponse
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.login import LoginCreate, LoginResponse
 from app.db.database import Base, engine, get_db
 from app.utils.security import hash_password, verify_password
+from app.utils.auth import SECRET_KEY, ALGORITHM, create_access_token
 from app.models.task import Task
 from app.models.user import User
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "login")
 
 
 Base.metadata.create_all(bind = engine)
@@ -25,8 +30,30 @@ def home():
 def health():
     return {"status" : "ok"}
 
-@app.post("/tasks", response_model = TaskResponse)
-def create_task(task : TaskCreate, db: Session = Depends(get_db)):
+
+def get_current_user(token: str = Depends(oauth2_scheme), db : Session = Depends(get_db)):
+    credential_exception = HTTPException(status_code=401, detail="Could not validate credentials")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms= [ALGORITHM])
+        email = payload.get("sub")
+        if email is None:
+            raise credential_exception
+    except JWTError:
+        raise credential_exception
+    
+    user = db.query(User).filter(User.email == email).first()
+
+    if user is None:
+        raise credential_exception
+    
+    return user
+
+
+@app.post("/tasks", response_model = TaskResponse, status_code=201)
+def create_task(task : TaskCreate, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
+    if current_user.id != task.user_id:
+        raise HTTPException(status_code=403, detail="Not allowed to create task for another user")
     user = db.query(User).filter(User.id == task.user_id).first()
 
     if user is None:
@@ -135,14 +162,21 @@ def get_user_tasks(user_id : int, db : Session = Depends(get_db)):
     return tasks
 
 @app.post("/login", response_model= LoginResponse)
-def create_login(user_data : LoginCreate, db : Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == user_data.email).first()
+def create_login(db : Session = Depends(get_db), form_data : OAuth2PasswordRequestForm = Depends()):
+    user = db.query(User).filter(User.email == form_data.username).first()
 
     if user is None:
         raise HTTPException(status_code= 401, detail= "Invalid email or password")
     
-    if not verify_password(user_data.password, user.password):
+    if not verify_password(form_data.password, user.password):
         raise HTTPException(status_code= 401, detail="Invalid email or password")
     
-    return {"message" : "Login Successfull"}
     
+    access_token = create_access_token(data = {"sub": user.email})
+
+    return {"access_token" : access_token, "token_type": "bearer"}
+    
+
+
+
+
