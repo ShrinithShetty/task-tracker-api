@@ -73,12 +73,12 @@ def create_task(task : TaskCreate, db: Session = Depends(get_db), current_user :
 
 
 @app.get("/tasks", response_model = list[TaskResponse])
-def get_task(completed : bool | None = None, db : Session = Depends(get_db)):
+def get_task(completed : bool | None = None,skip : int = 0, limit : int = 10, db : Session = Depends(get_db)):
     query = db.query(Task)
 
     if completed is not None:
         query = query.filter(Task.completed == completed)
-    tasks = query.all()
+    tasks = query.offset(skip).limit(limit).all()
     return tasks
 
 @app.get("/tasks/{task_id}", response_model = TaskResponse)
@@ -91,20 +91,18 @@ def get_task_id(task_id : int, db : Session = Depends(get_db)):
     return task
 
 @app.put("/tasks/{task_id}",response_model = TaskResponse)
-def update_task(task_id : int, updated_task : TaskCreate, db: Session = Depends(get_db)):
+def update_task(task_id : int, updated_task : TaskCreate, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if task is None:
         raise HTTPException(status_code = 404, detail = "Task Not Found" )
-    
-    user = db.query(User).filter(User.id == updated_task.user_id).first()
-    if user is None:
-        raise HTTPException(404, detail="User Not Found")
+
+    if task.user_id != current_user.id:
+        raise HTTPException(status_code = 403, detail= "Not allowed the update the task")
     
     task.title = updated_task.title
     task.description = updated_task.description
     task.completed = updated_task.completed
-    task.user_id = updated_task.user_id
 
     db.commit()
     db.refresh(task)
@@ -112,11 +110,14 @@ def update_task(task_id : int, updated_task : TaskCreate, db: Session = Depends(
     return task
 
 @app.delete("/tasks/{task_id}", status_code = 204)
-def delete_task(task_id: int, db: Session = Depends(get_db)):
+def delete_task(task_id: int, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if task is None:
         raise HTTPException(status_code = 404, detail = "Task Not Found")
+
+    if task.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed to delete this task")
     
     db.delete(task)
     db.commit()
